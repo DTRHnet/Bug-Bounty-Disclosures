@@ -348,50 +348,126 @@ Accordingly, I am not claiming that this currently permits arbitrary access to o
 
 I am reporting the confirmed behavior and asking Base44 to determine whether the public file mechanism is operating as intended and whether generated application archives should be subject to application-level authorization.
 
+---
+
 ## Security Impact Assessment
 
-The confirmed unauthenticated download changes the security assessment substantially.
+Severity depends primarily on Base44’s intended security and product model.
 
-### Scenario A — Intended public-file behavior
+**Scenario A — Export restriction is only a product/plan limitation**  
+If this is merely an undocumented alternative way to export an application that the user already has full authority over, the security impact is limited to a product/entitlement bypass.
 
-If every file uploaded through Core.UploadFile is intentionally public and Base44 considers the agent responsible for ensuring sensitive material is not uploaded, the issue may primarily be an agent capability/control-boundary problem.
+**Scenario B — Export restriction is intended to protect application source**  
+If the normal restriction is intended to prevent the user/agent from obtaining the complete application source, the ability to construct and upload the source independently represents a more significant authorization/control failure.
 
-### Scenario B — Export restriction is intended to protect application source
+**Scenario C — Public URLs bypass application authorization**  
+If generated archives can be retrieved without the authorization required to access the underlying application, or if an attacker can obtain another application’s archive, this could represent a substantially more serious confidentiality issue.
 
-If project/source export is restricted by account, plan, or application authorization, the ability to construct an equivalent export through the agent represents an entitlement or authorization bypass.
+Scenario C was not tested against another user’s application.
 
-### Scenario C — Application source is not intended to be publicly accessible
-
-If application source is expected to remain protected by Base44 authentication, generating a public archive creates an information-disclosure vulnerability.
-
-### Scenario D — Cross-application or cross-tenant access is possible
-
-If the same file-serving mechanism can be abused to obtain archives belonging to applications other than the attacker’s own, the severity would be substantially higher.
-
-I have not tested Scenario D.
+---
 
 ## Suggested Remediation
 
-I recommend reviewing the interaction between:
+Review the interaction between the following capabilities:
 
 1. AI agent filesystem permissions.
 2. Application source-code access.
-3. Core.UploadFile.
+3. `Core.UploadFile`.
 4. Public file storage.
 5. Project/export entitlements.
-6. Application-level authorization.
-7. File-level authorization.
+6. Application-level visibility and authorization.
 
-Potential mitigations include:
+Potential mitigations:
 
-* Preventing AI agents from uploading complete application workspaces when project export is not authorized.
-* Applying application/workspace authorization to generated project artifacts.
-* Providing a non-public upload mechanism for agent-generated artifacts containing application source.
-* Preventing Core.UploadFile from being used as an indirect project-export mechanism where export is restricted.
-* Scanning or identifying agent-generated archives containing large portions of the application workspace.
-* Ensuring public-file URLs cannot expose material that would otherwise require Base44 authentication.
-* Clearly separating intentionally public user uploads from application/system artifacts.
-* Applying appropriate authorization checks before returning files associated with an application.
+- Apply project/export authorization checks to agent-accessible source files.
+- Prevent agents from uploading complete application workspaces when project export is not authorized.
+- Apply application/workspace authorization to generated files.
+- Ensure public file URLs cannot expose restricted project artifacts.
+- Distinguish ordinary user-uploaded files from system/project artifacts.
+- Audit agent-created uploads for source/workspace archives.
+- Ensure `Core.UploadFile` cannot be used as an indirect project-export primitive where export is restricted.
+- Rate-limit or size-limit agent-initiated uploads on free tiers.
+
+---
+
+## Follow-up Observation: Public HTML Workspace Index & Cross-App Exposure Theory
+
+In a subsequent test the agent was instructed to produce a public-facing HTML index of the workspace rather than a single archive. The resulting page confirmed and expanded the earlier findings.
+
+### Observed Behavior
+
+The agent:
+
+1. Recursively walked `/app`.
+2. Embedded 45 small text files directly into the HTML (source visible inline via `<details>`/`<pre>`).
+3. Uploaded 9 larger files via `Core.UploadFile`.
+4. Generated a single self-contained HTML page listing every file, with clickable links for the uploaded ones.
+5. Uploaded the HTML itself and returned its public URL.
+
+**Statistics reported by the page:** `54 files · 9 uploaded · 45 embedded`
+
+### Confirmed Public URL Structure
+
+Every uploaded file (and the index itself) was served under:
+
+```
+https://base44.app/api/apps/{APP_ID}/files/mp/public/{APP_ID}/{REF_ID}_{sanitized_path}
+```
+
+Concrete example from the test application:
+
+```
+APP_ID  = 6a76395db2ecc5051b824952
+```
+
+Sample links returned:
+
+| Relative path | Public URL fragment |
+|---------------|---------------------|
+| `qualia-flow-multiplayer/public/game.js` | `.../82e82bc24_qualia-flow-multiplayer__public__game.js` |
+| `qualia-flow-multiplayer/server.js` | `.../d6fdf9ebf_qualia-flow-multiplayer__server.js` |
+| `src/lib/qualiaEngine.js` | `.../c9d12c75e_src__lib__qualiaEngine.js` |
+| `src/pages/Home.jsx` | `.../9139ffdae_src__pages__Home.jsx` |
+| `src/pages/OAuthConsent.jsx` | `.../6cc114608_src__pages__OAuthConsent.jsx` |
+
+Key observations:
+
+- `APP_ID` appears **twice** in the path (once as the app selector, once inside the public storage prefix).
+- `REF_ID` is a short opaque identifier (appears to be ~9 hexadecimal characters).
+- Path separators in the original filename are replaced with `__`.
+- The files are served from a path explicitly marked `public`.
+
+### APP_ID Format
+
+The observed `APP_ID` (`6a76395db2ecc5051b824952`) is a 24-character hexadecimal string. This matches the common MongoDB ObjectId format (timestamp + machine + pid + counter). If Base44 uses ObjectIds (or a similar sequential/time-based scheme) for application identifiers, the following become relevant:
+
+- ObjectIds are partially time-ordered; the leading bytes encode a timestamp.
+- If an attacker can obtain even a small number of valid APP_IDs (from public apps, shared links, referrer headers, client-side JS, error messages, etc.), the search space for nearby IDs shrinks.
+- Historical Base44 research (Wiz Research, July 2025) demonstrated that knowledge of only an `app_id` was sufficient to interact with previously private application authentication endpoints. That issue was fixed, but it established that `app_id` values are treated as capable of scoping privileged operations.
+
+### Cross-Application Exposure Theory
+
+The critical open question is the authorization model of the public file endpoint:
+
+```
+/api/apps/{APP_ID}/files/mp/public/...
+```
+
+**Design intent (inferred):**  
+`Core.UploadFile` is documented as placing files into public storage and returning a URL. The path component `public` strongly suggests the resulting objects are intentionally world-readable once the URL is known.
+
+**If the endpoint performs no additional authorization beyond “URL must be correctly formed”:**
+
+1. Anyone who obtains a full file URL can retrieve the content with no authentication.
+2. Anyone who knows (or can guess) a valid `APP_ID` and a valid `REF_ID` can construct working URLs.
+3. Because the agent can place **arbitrary workspace source** into this public bucket, the technique converts private application source into anonymously fetchable objects.
+
+**If `REF_ID` values are unpredictable and sufficiently long:**  
+Brute-forcing individual files remains impractical. The practical attack surface then depends on whether APP_IDs or full URLs ever leak (client-side code, shared links, logs, referrers, public app previews, etc.).
+
+**If `REF_ID` values are short, sequential, or derived from predictable inputs:**  
+An attacker who knows an APP_ID could enumerate recently uploaded public objects for that application.
 
 ## Evidence
 
