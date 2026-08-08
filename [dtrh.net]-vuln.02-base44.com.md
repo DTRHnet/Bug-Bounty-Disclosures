@@ -1,6 +1,12 @@
 # Unauthenticated Public Access to Base44 Application Archives Created Through AI Agent Capabilities
 ---
 
+<p align="center">
+  <img src="base44.png" width="50%" alt="Description of image">
+</p>
+
+---
+
 *Reporter*: admin@dtrh.net
 <br>
 *Date*: 2026-08-07
