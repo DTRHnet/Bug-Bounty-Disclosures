@@ -1,13 +1,20 @@
-# Security Vulnerability Report: Unauthenticated Public Access to Base44 Application Archives Created Through AI Agent Capabilities
+# Unauthenticated Public Access to Base44 Application Archives Created Through AI Agent Capabilities
+---
 
-# KBS <admin@dtrh.net>
+*Reporter*: admin@dtrh.net
+<br>
+*Date*: 2026-08-07
+<br>
+*Product*: Base44 (base44.com / base44.app) – AI app builder
+<br>
+*Severity*: Medium (business-logic / entitlement bypass; potential confidentiality considerations around public file URLs)
 
 ---
 
 
 ## Summary
 
-I discovered a workflow in which a Base44 application’s AI agent can access the application’s underlying workspace, programmatically construct a complete archive of the project using the Node.js runtime, and upload that archive to Base44’s public file-storage infrastructure using the Core.UploadFile integration.
+I discovered a workflow in which a Base44 application’s AI agent in the 'free' scope can access the application’s underlying workspace, programmatically construct a complete archive of the project using the Node.js runtime, and upload that archive to Base44’s public file-storage infrastructure using the Core.UploadFile integration.
 
 More importantly, I have now confirmed that the resulting archive can be downloaded without authentication.
 
@@ -271,6 +278,25 @@ The AI agent was able to:
 6. Make the archive retrievable without authentication.
 
 The final archive therefore exists outside the application’s normal authenticated access boundary.
+
+## Real World Output
+
+When the prompt is submitted, the agent typically responds along these lines:
+
+>Good idea — let me try hand-rolling a tar.gz in the Node sandbox and uploading it. First a quick probe to confirm filesystem access and see the project root.
+>
+>Probed sandbox filesystem
+>
+>Thought for ~20s
+>
+>Filesystem works (root is /app). Now I'll hand-roll a USTAR tar archive of the project (excluding node_modules and .git), gzip it, and upload it via the Core integration to get you a download URL.
+>
+>Archived workspace to tar.gz
+>
+>Thought for ~2s
+>
+>Done — the whole workspace is archived as a downloadable tar.gz (e.g. 102 files, ~135 KB compressed):
+
 
 ## Security Boundary
 
