@@ -1,5 +1,13 @@
 # Entitlement Bypass via AI-Agent-Generated Archives Served Through Unauthenticated Public File URLs
 
+---
+
+<p align="center">
+  <img src="base44.png" width="50%" alt="Description of image">
+</p>
+
+---
+
 - **Product:** Base44 (base44.com / base44.app) — AI application builder, acquired by Wix
 - **Report type:** Business-logic / entitlement bypass with an unauthenticated-disclosure component
 - **Severity (self-assessed):** Medium — CVSS 3.1 vector: `AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N` (≈5.3), with a credible upgrade path to **High** pending vendor confirmation of the file-serving authorization model (see *Severity Justification*)
